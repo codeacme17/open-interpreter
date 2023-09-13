@@ -34,6 +34,7 @@ import platform
 import openai
 import litellm
 import pkg_resources
+import subprocess
 
 import getpass
 import requests
@@ -455,9 +456,7 @@ class Interpreter:
           self.azure_api_base = input("Azure OpenAI API base: ")
           self.azure_deployment_name = input("Azure OpenAI deployment name of GPT: ")
           self.azure_api_version = input("Azure OpenAI API version: ")
-          print('', Markdown(
-            "**Tip:** To save this key for later, run `export AZURE_API_KEY=your_api_key AZURE_API_BASE=your_api_base AZURE_API_VERSION=your_api_version AZURE_DEPLOYMENT_NAME=your_gpt_deployment_name` on Mac/Linux or `setx AZURE_API_KEY your_api_key AZURE_API_BASE your_api_base AZURE_API_VERSION your_api_version AZURE_DEPLOYMENT_NAME your_gpt_deployment_name` on Windows."),
-                '')
+          self._save_configuration()
           time.sleep(2)
           print(Rule(style="white"))
 
@@ -519,7 +518,7 @@ class Interpreter:
 
           else:
               self.api_key = response
-              print('', Markdown("**Tip:** To save this key for later, run `export OPENAI_API_KEY=your_api_key` on Mac/Linux or `setx OPENAI_API_KEY your_api_key` on Windows."), '')
+              self._save_configuration()
               time.sleep(2)
               print(Rule(style="white"))
 
@@ -915,6 +914,46 @@ class Interpreter:
 
           self.active_block.end()
           return
+
+  def _save_configuration(self):
+    """Ask the user if they need to temporarily store configuration information"""
+    response = input("\nDo you want to save this configuration? (y/n)\n\n  ")
+    print("")
+    if response.strip().lower() == "y":
+      try:
+        # handle azure
+        if self.use_azure == True:
+          self._save_configuration_to_env("OPENAI_API_KEY", self.api_key)
+          self._save_configuration_to_env("AZURE_API_BASE", self.azure_api_base)
+          self._save_configuration_to_env("AZURE_API_VERSION", self.azure_api_version)
+          self._save_configuration_to_env("AZURE_DEPLOYMENT_NAME", self.azure_deployment_name)
+        # handle openai
+        if self.model == "gpt-3.5-turbo" or self.model == "gpt-4":
+          self._save_configuration_to_env("OPENAI_API_KEY", self.api_key)
+      except Exception as e:
+        print(str(e))
+    
+    else:
+      pass
+            
+  def _save_configuration_to_env(self, key, value):
+    system_platform = platform.system()
+    default_shell = os.environ.get("SHELL")
+    if system_platform == "Darwin" or system_platform == "Linux":
+      os.putenv(key, value)
+      if "zsh" in default_shell:
+          subprocess.call(['bash', '-c', f'echo "export {key}={value}" >> ~/.zshrc'])
+          subprocess.call(['bash', '-c', f'source ~/.zshrc'])
+      else:
+          subprocess.call(['bash', '-c', f'echo "export {key}={value}" >> ~/.bashrc'])
+          subprocess.call(['bash', '-c', f'source ~/.bashrc'])
+    elif system_platform == "Windows":
+      os.putenv(key, value)
+      cmd = ["setx", key, value]
+      subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+    else:
+      print("Unsupported OS")
 
   def _print_welcome_message(self):
     current_version = pkg_resources.get_distribution("open-interpreter").version
